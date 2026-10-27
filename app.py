@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, jsonify, send_from_directory,
 from flask_cors import CORS
 from pydub import AudioSegment
 import tempfile
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -140,11 +141,37 @@ def serve_audio_segment():
         return f"Error extracting audio segment: {str(e)}", 500
 
 @app.route('/')
+def hello():
+    """
+    Version 2.0 landing page proving the automated CI/CD deployment.
+    """
+    return f'''
+    <h1>Hello from Automated CI/CD Pipeline!</h1>
+    <p><strong>Version:</strong> 2.0 - Automated Deployment</p>
+    <p><strong>Deployed via:</strong> GitHub Actions + AWS SSM</p>
+    <p><strong>Build Date:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+    <p><strong>Assignment:</strong> Automated EC2 Deployment</p>
+    <p><a href="/player">Open audio player</a></p>
+    '''
+
+@app.route('/player')
 def index():
     """
     Renders the main HTML page for the client-side audio player.
     """
-    return render_template('index.html') 
+    return render_template('index.html')
+
+@app.route('/health')
+def health():
+    """
+    Health check endpoint for the automated deployment.
+    """
+    return {
+        'status': 'healthy',
+        'version': '2.0',
+        'deployment_method': 'automated',
+        'timestamp': datetime.now().isoformat()
+    }
 
 @app.route('/select_directory', methods=['POST'])
 def select_directory():
@@ -405,7 +432,7 @@ def save_label():
             'start_time': round(data['start_time'], 3),
             'end_time': round(data['end_time'], 3),
             'duration': round(data['end_time'] - data['start_time'], 3),
-            'labeled_at': __import__('datetime').datetime.now().isoformat()
+            'labeled_at': datetime.now().isoformat()
         }
         
         # Save to CSV file
