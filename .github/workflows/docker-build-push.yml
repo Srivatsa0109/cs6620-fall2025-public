@@ -1,11 +1,11 @@
-name: Docker Build and Push
+name: Docker Build, Push, and Deploy
 
 on:
   push:
     branches: [ "week02" ]
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -36,3 +36,39 @@ jobs:
             build.workflow=${{ github.workflow }}
             build.run_id=${{ github.run_id }}
             build.run_number=${{ github.run_number }}
+
+  deploy:
+    name: Deploy to EC2 via SSM
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Send deploy command via SSM
+        id: ssm
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/cs6620-app:latest"
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Automated deploy of cs6620-app from GitHub Actions run ${{ github.run_id }}" \
+            --parameters "{\"commands\":[\"docker pull $IMAGE\",\"docker stop cs6620-app || true\",\"docker rm cs6620-app || true\",\"docker run -d --name cs6620-app --restart unless-stopped -p 80:5000 $IMAGE\"]}" \
+            --query "Command.CommandId" --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "Sent SSM command: $COMMAND_ID"
+
+      - name: Verify deployment
+        run: |
+          aws ssm wait command-executed \
+            --command-id "${{ steps.ssm.outputs.command_id }}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" || true
+          aws ssm get-command-invocation \
+            --command-id "${{ steps.ssm.outputs.command_id }}" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}"
